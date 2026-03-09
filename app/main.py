@@ -8,9 +8,7 @@ from app.ui.style import inject_global_css
 
 
 def main():
-    # ----------------------------------
-    # Global page config
-    # ----------------------------------
+  
     st.set_page_config(
         page_title="Eyes of Asclepius",
         page_icon="🧿",
@@ -18,23 +16,17 @@ def main():
         initial_sidebar_state="collapsed"
     )
 
-    # ----------------------------------
-    # Global styling
-    # ----------------------------------
+
     inject_global_css()
 
-    # ----------------------------------
-    # Authentication gate
-    # ----------------------------------
+
     if "user" not in st.session_state:
         login_page()
         return
 
     user = st.session_state["user"]
 
-    # ----------------------------------
-    # Role-based routing
-    # ----------------------------------
+
     if user["role"] == "doctor":
         doctor_dashboard(user)
 

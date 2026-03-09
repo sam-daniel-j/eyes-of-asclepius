@@ -1,76 +1,129 @@
-from typing import Optional
-
-from app.security.hashing import hash_password
-from app.security.rsa import generate_rsa_keypair
-from app.security.key_protection import encrypt_private_key
-from app.models.user_model import (
-    create_user,
-    get_user_by_username
-)
+import bcrypt
+from app.database.connection import get_cursor, commit
+from app.utils.id_generator import generate_user_public_id
 
 
-def register_user(
-    username: str,
-    password: str,
-    role: str,
-    specialization: Optional[str] = None
-) -> int:
+# =====================================================
+# PASSWORD UTILITIES
+# =====================================================
+
+def hash_password(password: str) -> str:
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode(), salt)
+    return hashed.decode()
+
+
+def verify_password(password: str, hashed_password: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed_password.encode())
+
+
+# =====================================================
+# CREATE USER
+# =====================================================
+
+def create_user(username: str, password: str, role: str):
     """
-    Registers a new user (admin / doctor / patient).
-
-    Steps:
-    1. Validate role
-    2. Hash password (bcrypt)
-    3. Generate RSA key pair
-    4. Encrypt RSA private key using password (PBKDF2 + AES)
-    5. Store user securely in database
+    Creates a new user with:
+    - public_id (DOC-2025-0001 style)
+    - hashed password
     """
 
-    # -------------------------
-    # Validate role
-    # -------------------------
-    if role not in ("admin", "doctor", "patient"):
+    role_map = {
+        "doctor": "DOC",
+        "patient": "PAT",
+        "admin": "ADM"
+    }
+
+    role_prefix = role_map.get(role.lower())
+    if not role_prefix:
         raise ValueError("Invalid role")
 
-    # Only doctors can have specialization
-    if role != "doctor":
-        specialization = None
+    cur = get_cursor()
 
-    # -------------------------
-    # Check for duplicate user
-    # -------------------------
-    if get_user_by_username(username):
+    # Check if username already exists
+    cur.execute(
+        "SELECT id FROM users WHERE username = %s;",
+        (username,)
+    )
+    if cur.fetchone():
         raise ValueError("Username already exists")
 
-    # -------------------------
-    # Hash password
-    # -------------------------
-    password_hash = hash_password(password)
+    public_id = generate_user_public_id(role_prefix)
+    hashed_password = hash_password(password)
 
-    # -------------------------
-    # Generate RSA keys
-    # -------------------------
-    public_key, private_key = generate_rsa_keypair()
-
-    # -------------------------
-    # Encrypt private key with password
-    # -------------------------
-    encrypted_private_key, private_key_salt = encrypt_private_key(
-        private_key,
-        password
+    cur.execute(
+        """
+        INSERT INTO users (public_id, username, password_hash, role)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id, public_id, username, role;
+        """,
+        (public_id, username, hashed_password, role.lower())
     )
 
-    # -------------------------
-    # Store user in DB
-    # -------------------------
-    user_id = create_user(
-        username=username,
-        password_hash=password_hash,
-        role=role,
-        specialization=specialization,
-        rsa_public_key=public_key,
-        rsa_private_key_encrypted=encrypted_private_key,
-        private_key_salt=private_key_salt
+    user = cur.fetchone()
+    commit()
+    return user
+
+
+# =====================================================
+# AUTHENTICATE USER
+# =====================================================
+
+def authenticate_user(username: str, password: str):
+    cur = get_cursor()
+
+    cur.execute(
+        "SELECT * FROM users WHERE username = %s;",
+        (username,)
     )
 
-    return user_id
+    user = cur.fetchone()
+
+    if not user:
+        raise ValueError("Invalid username or password")
+
+    if not verify_password(password, user["password_hash"]):
+        raise ValueError("Invalid username or password")
+
+    return user
+
+
+# =====================================================
+# FETCH USERS
+# =====================================================
+
+def get_user_by_id(user_id: int):
+    cur = get_cursor()
+    cur.execute("SELECT * FROM users WHERE id = %s;", (user_id,))
+    return cur.fetchone()
+
+
+def get_user_by_public_id(public_id: str):
+    cur = get_cursor()
+    cur.execute("SELECT * FROM users WHERE public_id = %s;", (public_id,))
+    return cur.fetchone()
+
+
+def get_user_by_username(username: str):
+    cur = get_cursor()
+    cur.execute("SELECT * FROM users WHERE username = %s;", (username,))
+    return cur.fetchone()
+
+
+def get_users_by_role(role: str):
+    cur = get_cursor()
+    cur.execute(
+        "SELECT id, public_id, username FROM users WHERE role = %s ORDER BY id;",
+        (role.lower(),)
+    )
+    return cur.fetchall()
+
+
+# =====================================================
+# DELETE USER (ADMIN FUNCTION)
+# =====================================================
+
+def delete_user(user_id: int):
+    cur = get_cursor()
+    cur.execute("DELETE FROM users WHERE id = %s;", (user_id,))
+    commit()

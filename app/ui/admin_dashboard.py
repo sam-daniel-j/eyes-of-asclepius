@@ -9,9 +9,7 @@ def admin_dashboard(user):
 
     cur = get_cursor()
 
-    # ==================================================
-    # USERS MANAGEMENT
-    # ==================================================
+
     st.subheader("👤 All Users")
 
     cur.execute(
@@ -26,9 +24,7 @@ def admin_dashboard(user):
 
     st.divider()
 
-    # ==================================================
-    # MEDICAL RECORDS OVERVIEW
-    # ==================================================
+
     st.subheader("🏥 Medical Records")
 
     cur.execute(
@@ -47,9 +43,7 @@ def admin_dashboard(user):
 
     st.divider()
 
-    # ==================================================
-    # REFERRAL MANAGEMENT (REVOKE)
-    # ==================================================
+
     st.subheader("🔁 Doctor Referrals")
 
     cur.execute(
@@ -85,7 +79,7 @@ def admin_dashboard(user):
             (int(referral_id),)
         )
 
-        # Also remove record key access
+     
         cur.execute(
             """
             DELETE FROM record_keys
@@ -104,9 +98,7 @@ def admin_dashboard(user):
 
     st.divider()
 
-    # ==================================================
-    # ACCESS LOGS (SYSTEM-WIDE)
-    # ==================================================
+ 
     st.subheader("📜 Access Logs")
 
     cur.execute(
@@ -127,9 +119,7 @@ def admin_dashboard(user):
 
     st.divider()
 
-    # ==================================================
-    # LOGOUT
-    # ==================================================
+
     if st.button("Logout"):
         st.session_state.clear()
         st.rerun()

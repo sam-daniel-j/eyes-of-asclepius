@@ -3,52 +3,52 @@ from psycopg2.extras import RealDictCursor
 from app.config import Config
 
 
-# Single shared connection (safe for Streamlit)
-_connection = None
+# =====================================================
+# DATABASE CONNECTION
+# =====================================================
+
+try:
+    connection = psycopg2.connect(
+        dbname=Config.DB_NAME,
+        user=Config.DB_USER,
+        password=Config.DB_PASSWORD,
+        host=Config.DB_HOST,
+        port=Config.DB_PORT,
+    )
+
+    connection.autocommit = False
+
+except Exception as e:
+    raise RuntimeError(f"Database connection failed: {e}")
 
 
-def get_connection():
-    """
-    Returns a PostgreSQL connection.
-    Creates it if it doesn't exist or was closed.
-    """
-    global _connection
-
-    if _connection is None or _connection.closed:
-        _connection = psycopg2.connect(
-            host=Config.DB_HOST,
-            port=Config.DB_PORT,
-            dbname=Config.DB_NAME,
-            user=Config.DB_USER,
-            password=Config.DB_PASSWORD,
-            cursor_factory=RealDictCursor
-        )
-
-    return _connection
-
+# =====================================================
+# CURSOR
+# =====================================================
 
 def get_cursor():
     """
-    Returns a cursor using RealDictCursor
-    so results are dictionaries.
+    Returns rows as dictionaries instead of tuples.
     """
-    conn = get_connection()
-    return conn.cursor()
+    return connection.cursor(cursor_factory=RealDictCursor)
 
+
+# =====================================================
+# COMMIT / ROLLBACK
+# =====================================================
 
 def commit():
-    """
-    Commit the current transaction.
-    """
-    conn = get_connection()
-    conn.commit()
+    connection.commit()
 
+
+def rollback():
+    connection.rollback()
+
+
+# =====================================================
+# CLOSE CONNECTION (OPTIONAL)
+# =====================================================
 
 def close_connection():
-    """
-    Close the database connection cleanly.
-    """
-    global _connection
-    if _connection and not _connection.closed:
-        _connection.close()
-        _connection = None
+    if connection:
+        connection.close()

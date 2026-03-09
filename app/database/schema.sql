@@ -1,12 +1,4 @@
--- ==================================================
--- Eyes of Asclepius
--- Secure Hospital Management System
--- Database Schema
--- ==================================================
 
--- --------------------------
--- USERS TABLE
--- --------------------------
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
@@ -16,19 +8,16 @@ CREATE TABLE IF NOT EXISTS users (
         role IN ('admin', 'doctor', 'patient')
     ),
 
-    -- Doctor-specific field
+   
     specialization VARCHAR(100),
 
-    -- Cryptographic keys
+ 
     rsa_public_key TEXT NOT NULL,
     rsa_private_key_encrypted TEXT NOT NULL,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- --------------------------
--- MEDICAL RECORDS (ENCRYPTED)
--- --------------------------
 CREATE TABLE IF NOT EXISTS medical_records (
     id SERIAL PRIMARY KEY,
 
@@ -44,9 +33,6 @@ CREATE TABLE IF NOT EXISTS medical_records (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- --------------------------
--- RECORD KEYS (HYBRID ENCRYPTION)
--- --------------------------
 CREATE TABLE IF NOT EXISTS record_keys (
     id SERIAL PRIMARY KEY,
 
@@ -66,9 +52,6 @@ CREATE TABLE IF NOT EXISTS record_keys (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- --------------------------
--- DOCTOR REFERRALS
--- --------------------------
 CREATE TABLE IF NOT EXISTS doctor_referrals (
     id SERIAL PRIMARY KEY,
 
@@ -88,9 +71,6 @@ CREATE TABLE IF NOT EXISTS doctor_referrals (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- --------------------------
--- ACCESS LOGS (AUDIT TRAIL)
--- --------------------------
 CREATE TABLE IF NOT EXISTS access_logs (
     id SERIAL PRIMARY KEY,
 
@@ -113,9 +93,6 @@ CREATE TABLE IF NOT EXISTS access_logs (
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- --------------------------
--- DOCTOR ↔ PATIENT ASSIGNMENT
--- --------------------------
 CREATE TABLE IF NOT EXISTS doctor_patient_map (
     id SERIAL PRIMARY KEY,
 

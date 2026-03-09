@@ -10,9 +10,7 @@ from app.database.connection import get_cursor
 def referral_ui(doctor):
     st.subheader("🔁 Refer Patient to Another Doctor")
 
-    # =====================================
-    # PATIENT SELECTION
-    # =====================================
+
     patient_id = st.number_input(
         "Patient ID",
         min_value=1,
@@ -37,9 +35,7 @@ def referral_ui(doctor):
     if record_id is None:
         return
 
-    # =====================================
-    # TARGET DOCTOR
-    # =====================================
+
     to_doctor_id = st.number_input(
         "Refer To Doctor ID",
         min_value=1,
@@ -59,9 +55,7 @@ def referral_ui(doctor):
         f"({target_doctor.get('specialization') or 'General'})"
     )
 
-    # =====================================
-    # REFERRAL DETAILS
-    # =====================================
+
     reason = st.text_area(
         "Referral Reason",
         placeholder="Reason for referral (required)"
@@ -69,17 +63,13 @@ def referral_ui(doctor):
 
     st.caption("ℹ️ Referral access is permanent until revoked by an admin.")
 
-    # =====================================
-    # SUBMIT
-    # =====================================
+
     if st.button("Grant Referral Access"):
         if not reason.strip():
             st.warning("Referral reason is required")
             return
 
-        # ---------------------------------
-        # Fetch encrypted AES key (owner)
-        # ---------------------------------
+
         cur = get_cursor()
         cur.execute(
             """
@@ -97,9 +87,7 @@ def referral_ui(doctor):
 
         encrypted_key = cast(Dict[str, Any], row)["encrypted_aes_key"]
 
-        # ---------------------------------
-        # Grant referral
-        # ---------------------------------
+
         refer_patient(
             patient_id=int(patient_id),
             from_doctor=doctor,

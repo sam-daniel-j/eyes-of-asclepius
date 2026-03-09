@@ -10,42 +10,72 @@ from app.services.record_service import view_record
 
 
 def patient_dashboard(user):
-    st.title(f"🧍 Patient Dashboard — {user['username']}")
+    # ==================================================
+    # SIDEBAR
+    # ==================================================
+    with st.sidebar:
+        st.markdown("## 🧭 Navigation")
+        st.markdown("**Go to:**")
+        st.button("🏠 My Records", use_container_width=True)
+        st.button("🩺 Health Summary", use_container_width=True)
+        st.divider()
+        if st.button("🚪 Logout", use_container_width=True):
+            st.session_state.clear()
+            st.rerun()
 
     # ==================================================
-    # CURRENT (LATEST) MEDICAL RECORD
+    # HEADER
     # ==================================================
-    st.subheader("📌 Current Medical Record")
+    st.markdown(
+        f"""
+        <div class="gradient-header">
+            <h1>🧑 Patient Portal</h1>
+            <p>
+                Welcome, {user['username']}
+                <span class="role-badge">PATIENT</span>
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # ==================================================
+    # CURRENT MEDICAL RECORD
+    # ==================================================
+    st.markdown("### 📌 My Medical Records")
 
     latest = get_latest_record(user["id"])
 
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+
     if latest:
         try:
-            latest_text = view_record(
+            record_text = view_record(
                 record_id=latest["id"],
                 user_id=user["id"],
                 user_private_key=user["rsa_private_key"]
             )
             st.text_area(
                 "Latest Medical Record",
-                latest_text,
+                record_text,
                 height=220
             )
         except Exception:
-            st.warning("Unable to decrypt the latest medical record")
+            st.warning("Unable to decrypt your medical record")
     else:
-        st.info("No medical records available yet")
+        st.info("📄 No medical records found. Visit your doctor for a checkup!")
 
-    st.divider()
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # ==================================================
     # MEDICAL HISTORY
     # ==================================================
-    st.subheader("📜 Medical History")
-
     records = get_patient_records(user["id"])
 
     if records:
+        st.markdown("### 📜 Medical History")
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+
         record_ids = [r["id"] for r in records]
 
         selected_record = st.selectbox(
@@ -55,68 +85,62 @@ def patient_dashboard(user):
             placeholder="Choose a record"
         )
 
-        if st.button("View Selected Record"):
-            if selected_record is None:
-                st.warning("Please select a record first")
-            else:
-                try:
-                    history_text = view_record(
-                        record_id=int(selected_record),
-                        user_id=user["id"],
-                        user_private_key=user["rsa_private_key"]
-                    )
-                    st.text_area(
-                        "Medical Record",
-                        history_text,
-                        height=220
-                    )
-                except Exception:
-                    st.error("Access denied or record expired")
-    else:
-        st.info("No medical history found")
+        if selected_record:
+            try:
+                text = view_record(
+                    record_id=int(selected_record),
+                    user_id=user["id"],
+                    user_private_key=user["rsa_private_key"]
+                )
+                st.text_area(
+                    "Medical Record",
+                    text,
+                    height=220
+                )
+            except Exception:
+                st.error("Access denied or record expired")
 
-    st.divider()
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # ==================================================
-    # PRIMARY / MAIN DOCTORS
+    # DOCTORS INFO
     # ==================================================
-    st.subheader("👨‍⚕️ Primary Doctor(s)")
+    col1, col2 = st.columns(2)
 
-    doctors = get_patient_doctors(user["id"])
+    # -------------------------------
+    # PRIMARY DOCTORS
+    # -------------------------------
+    with col1:
+        st.markdown("### 👨‍⚕️ Primary Doctor(s)")
+        st.markdown('<div class="card">', unsafe_allow_html=True)
 
-    if doctors:
-        for d in doctors:
-            st.markdown(
-                f"- **{d['username']}** "
-                f"({d['specialization'] or 'General'})"
-            )
-    else:
-        st.info("No primary doctor assigned yet")
+        doctors = get_patient_doctors(user["id"])
+        if doctors:
+            for d in doctors:
+                st.markdown(
+                    f"- **{d['username']}** "
+                    f"({d['specialization'] or 'General'})"
+                )
+        else:
+            st.info("No primary doctors assigned")
 
-    st.divider()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # ==================================================
+    # -------------------------------
     # REFERRAL DOCTORS
-    # ==================================================
-    st.subheader("🔁 Referral Doctor(s)")
+    # -------------------------------
+    with col2:
+        st.markdown("### 🔁 Referral Doctor(s)")
+        st.markdown('<div class="card">', unsafe_allow_html=True)
 
-    referrals = get_referral_doctors(user["id"])
+        referrals = get_referral_doctors(user["id"])
+        if referrals:
+            for r in referrals:
+                st.markdown(
+                    f"- **{r['username']}** "
+                    f"({r['specialization'] or 'General'})"
+                )
+        else:
+            st.info("No referral doctors")
 
-    if referrals:
-        for r in referrals:
-            st.markdown(
-                f"- **{r['username']}** "
-                f"({r['specialization'] or 'General'}) "
-                f"⏳ until {r['access_expires_at']}"
-            )
-    else:
-        st.info("No active referral doctors")
-
-    st.divider()
-
-    # ==================================================
-    # LOGOUT
-    # ==================================================
-    if st.button("Logout"):
-        st.session_state.clear()
-        st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)

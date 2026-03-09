@@ -12,9 +12,7 @@ def emergency_ui(doctor):
         "Emergency access is time-limited, audited, and only for critical situations."
     )
 
-    # =====================================
-    # INPUTS
-    # =====================================
+
     patient_id = st.number_input(
         "Patient ID",
         min_value=1,
@@ -39,17 +37,12 @@ def emergency_ui(doctor):
         value=30
     )
 
-    # =====================================
-    # SUBMIT
-    # =====================================
     if st.button("Grant Emergency Access"):
         if not justification or len(justification.strip()) < 10:
             st.warning("Justification must be at least 10 characters long")
             return
 
-        # ---------------------------------
-        # Fetch encrypted AES key of owner
-        # ---------------------------------
+
         cur = get_cursor()
         cur.execute(
             """
@@ -67,9 +60,7 @@ def emergency_ui(doctor):
 
         encrypted_key = cast(Dict[str, Any], row)["encrypted_aes_key"]
 
-        # ---------------------------------
-        # Grant emergency access
-        # ---------------------------------
+
         grant_emergency_access(
             record_id=int(record_id),
             patient_id=int(patient_id),

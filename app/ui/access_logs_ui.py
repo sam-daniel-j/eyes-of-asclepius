@@ -7,9 +7,7 @@ def access_logs_ui(user):
 
     cur = get_cursor()
 
-    # =====================================
-    # ADMIN: SEE ALL LOGS
-    # =====================================
+
     if user["role"] == "admin":
         cur.execute(
             """
@@ -27,9 +25,7 @@ def access_logs_ui(user):
         logs = cur.fetchall()
         st.caption("Showing latest 200 system-wide access events")
 
-    # =====================================
-    # DOCTOR: SEE OWN LOGS
-    # =====================================
+
     else:
         cur.execute(
             """

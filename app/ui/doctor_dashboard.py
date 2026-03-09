@@ -1,64 +1,152 @@
 import streamlit as st
 
 from app.services.record_service import create_record, view_record
-from app.models.record_model import (
-    get_doctor_all_patients,
-    get_patient_records
-)
+from app.models.record_model import get_doctor_all_patients, get_patient_records
 from app.ui.referral_ui import referral_ui
 from app.ui.emergency_ui import emergency_ui
 from app.ui.access_logs_ui import access_logs_ui
 
 
 def doctor_dashboard(user):
-    st.title(f"🩺 Doctor Dashboard — {user['username']}")
+    # ==================================================
+    # SIDEBAR (NAVIGATION)
+    # ==================================================
+    with st.sidebar:
+        st.markdown("## 🧭 Navigation")
+        st.markdown("**Go to:**")
+        st.button("🏠 Home", use_container_width=True)
+        st.button("👥 My Patients", use_container_width=True)
+        st.button("📌 Pinned Patients", use_container_width=True)
+        st.divider()
+        if st.button("🚪 Logout", use_container_width=True):
+            st.session_state.clear()
+            st.rerun()
 
     # ==================================================
-    # CREATE MEDICAL RECORD
+    # HEADER
     # ==================================================
-    st.subheader("📝 Create Medical Record")
-
-    patient_id = st.number_input(
-        "Patient ID",
-        min_value=1,
-        step=1
+    st.markdown(
+        f"""
+        <div class="gradient-header">
+            <h1>👨‍⚕️ Doctor Dashboard</h1>
+            <p>
+                Welcome, Dr. {user['username']}
+                <span class="role-badge">DOCTOR</span>
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-    record_text = st.text_area(
-        "Medical Record",
-        placeholder="Enter diagnosis, observations, prescriptions, etc."
-    )
+    # ==================================================
+    # METRICS
+    # ==================================================
+    patients = get_doctor_all_patients(user["id"])
+    patient_count = len(patients)
 
-    if st.button("Create Record"):
-        if not record_text.strip():
-            st.warning("Medical record cannot be empty")
-        else:
-            try:
-                record_id = create_record(
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.markdown(
+            f"""
+            <div class="card metric">
+                <h2>{patient_count}</h2>
+                <p>My Patients</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with col2:
+        st.markdown(
+            """
+            <div class="card metric">
+                <h2>1</h2>
+                <p>Pinned</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with col3:
+        st.markdown(
+            """
+            <div class="card metric">
+                <h2>0</h2>
+                <p>Total Records</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with col4:
+        st.markdown(
+            """
+            <div class="card metric">
+                <h2>4</h2>
+                <p>Recent Activity</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    # ==================================================
+    # MAIN CONTENT
+    # ==================================================
+    left, right = st.columns(2)
+
+    # -------------------------------
+    # QUICK ACTIONS
+    # -------------------------------
+    with left:
+        st.markdown("### ⚡ Quick Actions")
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+
+        patient_id = st.number_input("Patient ID", min_value=1, step=1)
+        record_text = st.text_area("New Medical Record")
+
+        if st.button("➕ Add Medical Record", type="primary", use_container_width=True):
+            if record_text.strip():
+                create_record(
                     plain_text=record_text,
                     patient_id=int(patient_id),
                     doctor_user=user
                 )
-                st.success(
-                    f"Medical record created successfully (Record ID: {record_id})"
+                st.success("Medical record added")
+            else:
+                st.warning("Record cannot be empty")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # -------------------------------
+    # TODAY'S PATIENTS
+    # -------------------------------
+    with right:
+        st.markdown("### 📋 Today's Patients")
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+
+        if patients:
+            for p in patients[:3]:
+                st.markdown(
+                    f"""
+                    **👤 {p['username']}**  
+                    Records: {len(get_patient_records(p['id']))}
+                    """
                 )
-            except Exception:
-                st.error("Failed to create medical record")
+                st.button("View", key=f"view_{p['id']}")
+                st.divider()
+        else:
+            st.info("No patients found")
 
-    st.divider()
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # ==================================================
-    # ALL ACCESSIBLE PATIENTS
+    # PATIENT MANAGEMENT (DETAILED)
     # ==================================================
-    st.subheader("👥 My Patients")
+    st.markdown("### 🧠 Patient Management")
 
-    patients = get_doctor_all_patients(user["id"])
-
-    if not patients:
-        st.info("You currently have no patients assigned")
-    else:
+    if patients:
         patient_map = {p["username"]: p["id"] for p in patients}
-
         selected_patient = st.selectbox(
             "Select Patient",
             patient_map.keys(),
@@ -66,63 +154,34 @@ def doctor_dashboard(user):
             placeholder="Choose a patient"
         )
 
-        if selected_patient is not None:
+        if selected_patient:
             pid = patient_map[selected_patient]
-
-            st.markdown(f"### 📂 Records for **{selected_patient}**")
-
             records = get_patient_records(pid)
 
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+
             if records:
-                record_ids = [r["id"] for r in records]
-
-                selected_record = st.selectbox(
-                    "Select Medical Record",
-                    record_ids,
-                    index=None,
-                    placeholder="Choose a record"
-                )
-
-                if selected_record is not None:
-                    if st.button("View Medical Record"):
-                        try:
-                            text = view_record(
-                                record_id=int(selected_record),
-                                user_id=user["id"],
-                                user_private_key=user["rsa_private_key"]
-                            )
-                            st.text_area(
-                                "Medical Record",
-                                text,
-                                height=260
-                            )
-                        except Exception:
-                            st.error("Access denied or record expired")
+                for r in records:
+                    if st.button(f"View Record #{r['id']}", key=f"rec_{r['id']}"):
+                        text = view_record(
+                            record_id=r["id"],
+                            user_id=user["id"],
+                            user_private_key=user["rsa_private_key"]
+                        )
+                        st.text_area(
+                            "Medical Record",
+                            text,
+                            height=200
+                        )
             else:
-                st.info("No medical records found for this patient")
-
-            st.divider()
-
-            # ==================================================
-            # PATIENT ACTIONS
-            # ==================================================
-            st.subheader("⚙️ Patient Actions")
+                st.info("No records found")
 
             referral_ui(user)
             emergency_ui(user)
 
-    st.divider()
+            st.markdown('</div>', unsafe_allow_html=True)
 
     # ==================================================
-    # ACCESS LOGS (DOCTOR-SCOPED)
+    # ACCESS LOGS
     # ==================================================
     access_logs_ui(user)
-
-    st.divider()
-
-    # ==================================================
-    # LOGOUT
-    # ==================================================
-    if st.button("Logout"):
-        st.session_state.clear()
-        st.rerun()
