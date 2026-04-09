@@ -159,10 +159,11 @@ def get_doctor_all_patients(doctor_id: int) -> List[Dict[str, Any]]:
     cur.execute(
         """
         SELECT DISTINCT
-            u.id,
-            u.username
+        u.id,
+        u.username
         FROM users u
-        WHERE u.id IN (
+        WHERE u.role = 'patient'   -- ✅ ADD THIS LINE
+        AND u.id IN (
 
             -- Patients where doctor created records
             SELECT patient_id

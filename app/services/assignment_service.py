@@ -43,22 +43,21 @@ def is_doctor_assigned(doctor_id: int, patient_id: int) -> bool:
 # Get All Patients of Doctor
 # -----------------------------------------------------
 
+from app.database.connection import get_cursor  # adjust if needed
+
 def get_doctor_patients(doctor_id: int):
-    cur = get_cursor()
+    cursor = get_cursor()
 
-    cur.execute(
-        """
-        SELECT u.id, u.public_id, u.username
-        FROM doctor_patient_map dpm
-        JOIN users u ON u.id = dpm.patient_id
-        WHERE dpm.doctor_id = %s
-        ORDER BY u.id;
-        """,
-        (doctor_id,)
-    )
+    query = """
+    SELECT u.id, u.username, u.public_id
+    FROM users u
+    JOIN doctor_patient_map dpm ON u.id = dpm.patient_id
+    WHERE dpm.doctor_id = %s
+    AND u.role = 'patient'
+    """
 
-    return cur.fetchall()
-
+    cursor.execute(query, (doctor_id,))
+    return cursor.fetchall()
 
 # -----------------------------------------------------
 # Get All Doctors of Patient
@@ -79,3 +78,4 @@ def get_patient_doctors(patient_id: int):
     )
 
     return cur.fetchall()
+

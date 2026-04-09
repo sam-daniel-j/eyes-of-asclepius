@@ -1,11 +1,14 @@
+from turtle import left
+
 import streamlit as st
 
-from app.services.record_service import create_record, view_record
-from app.models.record_model import get_doctor_all_patients, get_patient_records
+from app.services.record_service import create_record, view_record, get_records_for_patient
+
+from app.services.assignment_service import get_doctor_patients
 from app.ui.referral_ui import referral_ui
 from app.ui.emergency_ui import emergency_ui
 from app.ui.access_logs_ui import access_logs_ui
-
+from app.models.record_model import get_patient_records
 
 def doctor_dashboard(user):
     # ==================================================
@@ -41,7 +44,7 @@ def doctor_dashboard(user):
     # ==================================================
     # METRICS
     # ==================================================
-    patients = get_doctor_all_patients(user["id"])
+    patients = get_doctor_patients(user["id"])
     patient_count = len(patients)
 
     col1, col2, col3, col4 = st.columns(4)
@@ -102,21 +105,43 @@ def doctor_dashboard(user):
         st.markdown("### ⚡ Quick Actions")
         st.markdown('<div class="card">', unsafe_allow_html=True)
 
-        patient_id = st.number_input("Patient ID", min_value=1, step=1)
-        record_text = st.text_area("New Medical Record")
+        if patients:
+            patient_map = {
+            f"{p['public_id']} - {p['username']}": p["id"]
+            for p in patients
+            }
 
-        if st.button("➕ Add Medical Record", type="primary", use_container_width=True):
-            if record_text.strip():
-                create_record(
+            selected_patient = st.selectbox(
+            "Select Patient",
+            patient_map.keys(),
+            index=None,
+            placeholder="Choose patient"
+        )
+
+            record_text = st.text_area("New Medical Record")
+
+            if st.button("➕ Add Medical Record", type="primary", use_container_width=True):
+
+                if selected_patient and record_text.strip():
+
+                    pid = patient_map[selected_patient]
+
+                    create_record(
                     plain_text=record_text,
-                    patient_id=int(patient_id),
+                    patient_id=pid,
                     doctor_user=user
-                )
-                st.success("Medical record added")
-            else:
-                st.warning("Record cannot be empty")
+                 )
 
-        st.markdown('</div>', unsafe_allow_html=True)
+                st.success("Medical record added")
+                st.rerun()
+
+            else:
+                st.warning("Select patient and enter record")
+
+        else:
+         st.info("No patients assigned")
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # -------------------------------
     # TODAY'S PATIENTS
@@ -133,8 +158,8 @@ def doctor_dashboard(user):
                     Records: {len(get_patient_records(p['id']))}
                     """
                 )
-                st.button("View", key=f"view_{p['id']}")
-                st.divider()
+                if st.button("View", key=f"view_{p['id']}"):
+                    st.session_state["selected_patient"] = p["id"]
         else:
             st.info("No patients found")
 
@@ -156,13 +181,13 @@ def doctor_dashboard(user):
 
         if selected_patient:
             pid = patient_map[selected_patient]
-            records = get_patient_records(pid)
+            records = get_records_for_patient(pid, user["id"])
 
             st.markdown('<div class="card">', unsafe_allow_html=True)
 
             if records:
                 for r in records:
-                    if st.button(f"View Record #{r['id']}", key=f"rec_{r['id']}"):
+                   if st.button(f"View Record #{r['id']} ({r['created_at']})", key=f"rec_{r['id']}"):
                         text = view_record(
                             record_id=r["id"],
                             user_id=user["id"],

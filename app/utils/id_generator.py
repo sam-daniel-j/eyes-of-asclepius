@@ -1,9 +1,17 @@
 from datetime import datetime
 from app.database.connection import get_cursor, commit
 
+ROLE_PREFIX = {
+    "doctor": "DOC",
+    "patient": "PAT",
+    "admin": "ADM"
+}
 
 def generate_user_public_id(role: str) -> str:
-    role = role.upper()
+    prefix = ROLE_PREFIX.get(role.lower())
+    if not prefix:
+        raise ValueError("Invalid role")
+
     year = datetime.now().year
     cur = get_cursor()
 
@@ -16,15 +24,14 @@ def generate_user_public_id(role: str) -> str:
         SET last_value = user_id_counters.last_value + 1
         RETURNING last_value;
         """,
-        (role, year)
+        (prefix, year)
     )
 
     result = cur.fetchone()
-
     if result is None:
         raise RuntimeError("Failed to generate public ID")
 
     commit()
 
     next_value = result["last_value"]
-    return f"{role}-{year}-{next_value:04d}"
+    return f"{prefix}-{year}-{next_value:03d}"

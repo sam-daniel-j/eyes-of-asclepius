@@ -1,6 +1,7 @@
 import bcrypt
 from app.database.connection import get_cursor, commit
 from app.utils.id_generator import generate_user_public_id
+from app.utils.crypto_keys import generate_rsa_keys
 
 
 # =====================================================
@@ -22,11 +23,6 @@ def verify_password(password: str, hashed_password: str) -> bool:
 # =====================================================
 
 def create_user(username: str, password: str, role: str):
-    """
-    Creates a new user with:
-    - public_id (DOC-2025-0001 style)
-    - hashed password
-    """
 
     role_map = {
         "doctor": "DOC",
@@ -40,7 +36,7 @@ def create_user(username: str, password: str, role: str):
 
     cur = get_cursor()
 
-    # Check if username already exists
+    # Check duplicate username
     cur.execute(
         "SELECT id FROM users WHERE username = %s;",
         (username,)
@@ -51,13 +47,74 @@ def create_user(username: str, password: str, role: str):
     public_id = generate_user_public_id(role_prefix)
     hashed_password = hash_password(password)
 
+    rsa_public_key, rsa_private_key = generate_rsa_keys()
+
     cur.execute(
         """
-        INSERT INTO users (public_id, username, password_hash, role)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO users
+        (public_id, username, password_hash, role, rsa_public_key, rsa_private_key)
+        VALUES (%s, %s, %s, %s, %s, %s)
         RETURNING id, public_id, username, role;
         """,
-        (public_id, username, hashed_password, role.lower())
+        (
+            public_id,
+            username,
+            hashed_password,
+            role.lower(),
+            rsa_public_key,
+            rsa_private_key
+        )
+    )
+
+    user = cur.fetchone()
+    commit()
+
+    if user:
+        return dict(user)
+
+    return None
+
+    role_map = {
+        "doctor": "DOC",
+        "patient": "PAT",
+        "admin": "ADM"
+    }
+
+    role_prefix = role_map.get(role.lower())
+    if not role_prefix:
+        raise ValueError("Invalid role")
+
+    cur = get_cursor()
+
+    # Check duplicate username
+    cur.execute(
+        "SELECT id FROM users WHERE username = %s;",
+        (username,)
+    )
+    if cur.fetchone():
+        raise ValueError("Username already exists")
+
+    public_id = generate_user_public_id(role_prefix)
+    hashed_password = hash_password(password)
+
+    # 🔑 Generate RSA keys
+    rsa_public_key, rsa_private_key = generate_rsa_keys()
+
+    cur.execute(
+        """
+        INSERT INTO users
+        (public_id, username, password_hash, role, rsa_public_key, rsa_private_key)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        RETURNING id, public_id, username, role;
+        """,
+        (
+            public_id,
+            username,
+            hashed_password,
+            role.lower(),
+            rsa_public_key,
+            rsa_private_key
+        )
     )
 
     user = cur.fetchone()
@@ -100,7 +157,10 @@ def get_user_by_id(user_id: int):
 
 def get_user_by_public_id(public_id: str):
     cur = get_cursor()
-    cur.execute("SELECT * FROM users WHERE public_id = %s;", (public_id,))
+    cur.execute(
+        "SELECT * FROM users WHERE public_id = %s;",
+        (public_id,)
+    )
     return cur.fetchone()
 
 
