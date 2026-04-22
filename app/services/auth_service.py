@@ -41,6 +41,7 @@ def authenticate_user(username: str, password: str) -> Dict[str, Any]:
             salt_b64=user["private_key_salt"],
             password=password
         )
+        print("PRIVATE KEY:", private_key[:100])
     except Exception:
         # Covers wrong password, corrupted key, tampering
         raise ValueError("Invalid username or password")

@@ -40,24 +40,74 @@ def is_doctor_assigned(doctor_id: int, patient_id: int) -> bool:
 
 
 # -----------------------------------------------------
-# Get All Patients of Doctor
+# Get Assigned Patients
 # -----------------------------------------------------
 
-from app.database.connection import get_cursor  # adjust if needed
-
 def get_doctor_patients(doctor_id: int):
-    cursor = get_cursor()
+    cur = get_cursor()
 
-    query = """
-    SELECT u.id, u.username, u.public_id
-    FROM users u
-    JOIN doctor_patient_map dpm ON u.id = dpm.patient_id
-    WHERE dpm.doctor_id = %s
-    AND u.role = 'patient'
-    """
+    cur.execute(
+        """
+        SELECT u.id, u.username, u.public_id
+        FROM users u
+        JOIN doctor_patient_map dpm ON u.id = dpm.patient_id
+        WHERE dpm.doctor_id = %s
+        AND u.role = 'patient'
+        """,
+        (doctor_id,)
+    )
 
-    cursor.execute(query, (doctor_id,))
-    return cursor.fetchall()
+    return cur.fetchall()
+
+
+# -----------------------------------------------------
+# 🔁 Get Referred Patients (NEW)
+# -----------------------------------------------------
+
+def get_referred_patients(doctor_id: int):
+    cur = get_cursor()
+
+    cur.execute(
+        """
+        SELECT DISTINCT u.id, u.username, u.public_id
+        FROM doctor_referrals r
+        JOIN users u ON u.id = r.patient_id
+        WHERE r.to_doctor_id = %s
+        AND r.is_active = TRUE
+        """,
+        (doctor_id,)
+    )
+
+    return cur.fetchall()
+
+
+# -----------------------------------------------------
+# 🧠 Get ALL Patients (Assigned + Referred)
+# -----------------------------------------------------
+
+def get_all_patients_for_doctor(doctor_id: int):
+    assigned = get_doctor_patients(doctor_id)
+    referred = get_referred_patients(doctor_id)
+
+    patient_map = {}
+
+    # Assigned first (priority)
+    for p in assigned:
+        patient_map[p["id"]] = {
+            **p,
+            "type": "Assigned 🟢"
+        }
+
+    # Add referred if not already present
+    for p in referred:
+        if p["id"] not in patient_map:
+            patient_map[p["id"]] = {
+                **p,
+                "type": "Referred 🔁"
+            }
+
+    return list(patient_map.values())
+
 
 # -----------------------------------------------------
 # Get All Doctors of Patient
@@ -78,4 +128,3 @@ def get_patient_doctors(patient_id: int):
     )
 
     return cur.fetchall()
-

@@ -1,212 +1,215 @@
-from turtle import left
-
 import streamlit as st
+from datetime import datetime, timedelta
 
 from app.services.record_service import create_record, view_record, get_records_for_patient
+from app.services.assignment_service import get_all_patients_for_doctor
+from app.models.record_model import get_record_with_key, store_record_key
+from app.services.referral_service import refer_patient
+from app.models.user_model import get_user_by_id
+from app.database.connection import get_cursor
+from app.security.rsa import decrypt_with_private_key, encrypt_with_public_key
 
-from app.services.assignment_service import get_doctor_patients
-from app.ui.referral_ui import referral_ui
-from app.ui.emergency_ui import emergency_ui
-from app.ui.access_logs_ui import access_logs_ui
-from app.models.record_model import get_patient_records
 
 def doctor_dashboard(user):
-    # ==================================================
-    # SIDEBAR (NAVIGATION)
-    # ==================================================
+
+    # ================= LOAD PATIENTS =================
+    patients = get_all_patients_for_doctor(user["id"])
+
+    # ================= SIDEBAR =================
     with st.sidebar:
         st.markdown("## 🧭 Navigation")
-        st.markdown("**Go to:**")
         st.button("🏠 Home", use_container_width=True)
         st.button("👥 My Patients", use_container_width=True)
-        st.button("📌 Pinned Patients", use_container_width=True)
         st.divider()
+
         if st.button("🚪 Logout", use_container_width=True):
             st.session_state.clear()
             st.rerun()
 
-    # ==================================================
-    # HEADER
-    # ==================================================
-    st.markdown(
-        f"""
-        <div class="gradient-header">
-            <h1>👨‍⚕️ Doctor Dashboard</h1>
-            <p>
-                Welcome, Dr. {user['username']}
-                <span class="role-badge">DOCTOR</span>
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    # ================= HEADER =================
+    st.markdown(f"## 👨‍⚕️ Doctor Dashboard - Dr. {user['username']}")
 
-    # ==================================================
-    # METRICS
-    # ==================================================
-    patients = get_doctor_patients(user["id"])
-    patient_count = len(patients)
+    # ================= PATIENT SELECT =================
+    if not patients:
+        st.warning("No patients assigned or referred")
+        return
 
-    col1, col2, col3, col4 = st.columns(4)
+    patient_display = {
+        f"{p['public_id']} - {p['username']} ({p['type']})": p["id"]
+        for p in patients
+    }
 
-    with col1:
-        st.markdown(
-            f"""
-            <div class="card metric">
-                <h2>{patient_count}</h2>
-                <p>My Patients</p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    selected_patient = st.selectbox("Select Patient", list(patient_display.keys()))
 
-    with col2:
-        st.markdown(
-            """
-            <div class="card metric">
-                <h2>1</h2>
-                <p>Pinned</p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    if not selected_patient:
+        return
 
-    with col3:
-        st.markdown(
-            """
-            <div class="card metric">
-                <h2>0</h2>
-                <p>Total Records</p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    pid = patient_display[selected_patient]
 
-    with col4:
-        st.markdown(
-            """
-            <div class="card metric">
-                <h2>4</h2>
-                <p>Recent Activity</p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    # ================= RECORDS =================
+    records = get_records_for_patient(pid, user["id"])
 
-    # ==================================================
-    # MAIN CONTENT
-    # ==================================================
-    left, right = st.columns(2)
+    st.markdown("### 📄 Records")
 
-    # -------------------------------
-    # QUICK ACTIONS
-    # -------------------------------
-    with left:
-        st.markdown("### ⚡ Quick Actions")
-        st.markdown('<div class="card">', unsafe_allow_html=True)
+    if records:
+        for r in records:
+            if st.button(f"View Record #{r['id']}", key=f"view_{r['id']}"):
 
-        if patients:
-            patient_map = {
-            f"{p['public_id']} - {p['username']}": p["id"]
-            for p in patients
-            }
+                try:
+                    text = view_record(
+                        record_id=r["id"],
+                        user_id=user["id"],
+                        user_private_key=user["rsa_private_key"]
+                    )
 
-            selected_patient = st.selectbox(
-            "Select Patient",
-            patient_map.keys(),
-            index=None,
-            placeholder="Choose patient"
-        )
+                    st.text_area("Record", text)
 
-            record_text = st.text_area("New Medical Record")
+                except Exception as e:
+                    st.error(f"Decryption failed: {str(e)}")
 
-            if st.button("➕ Add Medical Record", type="primary", use_container_width=True):
+    else:
+        st.info("No records available")
 
-                if selected_patient and record_text.strip():
+    # ================= ADD RECORD =================
+    st.markdown("### ➕ Add Record")
 
-                    pid = patient_map[selected_patient]
+    new_record = st.text_area("New Record")
 
-                    create_record(
-                    plain_text=record_text,
-                    patient_id=pid,
-                    doctor_user=user
-                 )
+    if st.button("Add Record"):
 
-                st.success("Medical record added")
-                st.rerun()
+        if not new_record.strip():
+            st.warning("Enter record")
+            return
 
-            else:
-                st.warning("Select patient and enter record")
+        try:
+            create_record(
+                plain_text=new_record,
+                patient_id=pid,
+                doctor_user=user
+            )
 
-        else:
-         st.info("No patients assigned")
+            st.success("Record added successfully")
+            st.rerun()
 
-    st.markdown('</div>', unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Error adding record: {str(e)}")
 
-    # -------------------------------
-    # TODAY'S PATIENTS
-    # -------------------------------
-    with right:
-        st.markdown("### 📋 Today's Patients")
-        st.markdown('<div class="card">', unsafe_allow_html=True)
+    # ================= LOAD DOCTORS =================
+    cur = get_cursor()
+    cur.execute("SELECT id, username, public_id FROM users WHERE role='doctor'")
+    doctors = cur.fetchall()
 
-        if patients:
-            for p in patients[:3]:
-                st.markdown(
-                    f"""
-                    **👤 {p['username']}**  
-                    Records: {len(get_patient_records(p['id']))}
-                    """
-                )
-                if st.button("View", key=f"view_{p['id']}"):
-                    st.session_state["selected_patient"] = p["id"]
-        else:
-            st.info("No patients found")
+    doctor_map = {
+        f"{d['public_id']} - {d['username']}": d["id"]
+        for d in doctors if d["id"] != user["id"]
+    }
 
-        st.markdown('</div>', unsafe_allow_html=True)
+    # ================= REFERRAL =================
+    st.markdown("### 🔁 Referral")
 
-    # ==================================================
-    # PATIENT MANAGEMENT (DETAILED)
-    # ==================================================
-    st.markdown("### 🧠 Patient Management")
+    ref_doc = st.selectbox("Select Doctor", list(doctor_map.keys()), index=None)
+    reason = st.text_area("Reason for referral")
 
-    if patients:
-        patient_map = {p["username"]: p["id"] for p in patients}
-        selected_patient = st.selectbox(
-            "Select Patient",
-            patient_map.keys(),
-            index=None,
-            placeholder="Choose a patient"
-        )
+    if st.button("Refer Patient"):
 
-        if selected_patient:
-            pid = patient_map[selected_patient]
-            records = get_records_for_patient(pid, user["id"])
+        if not ref_doc:
+            st.warning("Select doctor")
+            return
 
-            st.markdown('<div class="card">', unsafe_allow_html=True)
+        if not records:
+            st.warning("No records available")
+            return
 
-            if records:
-                for r in records:
-                   if st.button(f"View Record #{r['id']} ({r['created_at']})", key=f"rec_{r['id']}"):
-                        text = view_record(
-                            record_id=r["id"],
-                            user_id=user["id"],
-                            user_private_key=user["rsa_private_key"]
-                        )
-                        st.text_area(
-                            "Medical Record",
-                            text,
-                            height=200
-                        )
-            else:
-                st.info("No records found")
+        try:
+            to_doc_id = doctor_map[ref_doc]
+            record_id = records[0]["id"]
 
-            referral_ui(user)
-            emergency_ui(user)
+            record = get_record_with_key(record_id, user["id"])
 
-            st.markdown('</div>', unsafe_allow_html=True)
+            if not record:
+                st.error("You don't have access to this record")
+                return
 
-    # ==================================================
-    # ACCESS LOGS
-    # ==================================================
-    access_logs_ui(user)
+            aes_key = decrypt_with_private_key(
+                record["encrypted_aes_key"],
+                user["rsa_private_key"]
+            )
+
+            to_doc = get_user_by_id(to_doc_id)
+
+            if not to_doc or not to_doc.get("rsa_public_key"):
+                st.error("Target doctor has no public key")
+                return
+
+            encrypted_key = encrypt_with_public_key(
+                aes_key,
+                to_doc["rsa_public_key"]
+            )
+
+            refer_patient(
+                patient_id=pid,
+                from_doctor=user,
+                to_doctor_id=to_doc_id,
+                record_id=record_id,
+                encrypted_aes_key_for_from_doctor=encrypted_key,
+                reason=reason
+            )
+
+            st.success("Referral successful")
+
+        except Exception as e:
+            st.error(f"Referral failed: {str(e)}")
+
+    # ================= EMERGENCY =================
+    st.markdown("### 🚨 Emergency Access")
+
+    em_doc = st.selectbox("Emergency Doctor", list(doctor_map.keys()), index=None)
+
+    if st.button("Grant Emergency Access"):
+
+        if not em_doc:
+            st.warning("Select doctor")
+            return
+
+        if not records:
+            st.warning("No records available")
+            return
+
+        try:
+            to_doc_id = doctor_map[em_doc]
+            record_id = records[0]["id"]
+
+            record = get_record_with_key(record_id, user["id"])
+
+            if not record:
+                st.error("No access to record")
+                return
+
+            aes_key = decrypt_with_private_key(
+                record["encrypted_aes_key"],
+                user["rsa_private_key"]
+            )
+
+            to_doc = get_user_by_id(to_doc_id)
+
+            if not to_doc or not to_doc.get("rsa_public_key"):
+                st.error("Doctor has no public key")
+                return
+
+            encrypted_key = encrypt_with_public_key(
+                aes_key,
+                to_doc["rsa_public_key"]
+            )
+
+            store_record_key(
+                record_id=record_id,
+                user_id=to_doc_id,
+                encrypted_aes_key=encrypted_key,
+                granted_via="EMERGENCY",
+                expires_at=datetime.now() + timedelta(minutes=10)
+            )
+
+            st.success("Emergency access granted (10 mins)")
+
+        except Exception as e:
+            st.error(f"Emergency access failed: {str(e)}")
