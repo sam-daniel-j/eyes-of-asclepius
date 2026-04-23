@@ -1,60 +1,31 @@
-from typing import Dict
-
-from app.services.assignment_service import is_doctor_assigned
 from app.database.connection import get_cursor, commit
-
-from app.security.hybrid import encrypt_medical_record, decrypt_medical_record
-
 from app.models.record_model import (
     create_medical_record,
     store_record_key,
     get_record_with_key,
     get_patient_records
 )
-
 from app.models.user_model import get_user_by_id
+from app.security.hybrid import encrypt_medical_record, decrypt_medical_record
 
 
-# ==================================================
-# 🔐 ACCESS LOGGING (NEW)
-# ==================================================
-def log_access(user_id: int, patient_id: int, action: str):
-    cur = get_cursor()
-
-    cur.execute("""
-        INSERT INTO access_logs (user_id, patient_id, action, timestamp)
-        VALUES (%s, %s, %s, NOW())
-    """, (user_id, patient_id, action))
-
-    commit()
-
-
-# ==================================================
+# ==============================
 # CREATE RECORD
-# ==================================================
-def create_record(
-    *,
-    plain_text: str,
-    patient_id: int,
-    doctor_user: Dict
-) -> int:
+# ==============================
+def create_record(plain_text, patient_id, doctor_user):
 
     doctor_id = doctor_user["id"]
+    patient = get_user_by_id(patient_id)
 
-    # 🔒 SECURITY CHECK
-    if not is_doctor_assigned(doctor_id, patient_id):
-        raise ValueError("Doctor is not assigned to this patient")
-
-    # 🔥 GET PATIENT
-    patient_user = get_user_by_id(patient_id)
-
-    if not patient_user:
+    if not patient:
         raise ValueError("Patient not found")
 
-    # 🔐 ENCRYPTION RECIPIENTS
+    if not patient.get("rsa_public_key") or not doctor_user.get("rsa_public_key"):
+        raise ValueError("Missing RSA keys")
+
     recipients = {
-        patient_id: patient_user["rsa_public_key"],
-        doctor_id: doctor_user["rsa_public_key"],
+        patient_id: patient["rsa_public_key"],
+        doctor_id: doctor_user["rsa_public_key"]
     }
 
     encrypted = encrypt_medical_record(
@@ -62,42 +33,30 @@ def create_record(
         recipient_public_keys=recipients
     )
 
-    # 🗂️ STORE RECORD
     record_id = create_medical_record(
-        patient_id=patient_id,
-        doctor_id=doctor_id,
-        encrypted_data=encrypted["encrypted_data"],
-        iv=encrypted["iv"]
+        patient_id,
+        doctor_id,
+        encrypted["encrypted_data"],
+        encrypted["iv"]
     )
 
-    # 🔑 STORE KEYS
-    for user_id, enc_key in encrypted["encrypted_keys"].items():
-        store_record_key(
-            record_id=record_id,
-            user_id=user_id,
-            encrypted_aes_key=enc_key,
-            granted_via="OWNER"
-        )
+    # 🔥 store AES key for BOTH users
+    for uid, enc_key in encrypted["encrypted_keys"].items():
+        store_record_key(record_id, uid, enc_key, "OWNER")
 
     return record_id
 
 
-# ==================================================
-# VIEW RECORD (WITH LOGGING 🔥)
-# ==================================================
-def view_record(
-    *,
-    record_id: int,
-    user_id: int,
-    user_private_key: str
-) -> str:
+# ==============================
+# VIEW RECORD
+# ==============================
+def view_record(record_id, user_id, user_private_key):
 
     record = get_record_with_key(record_id, user_id)
 
     if not record:
         raise ValueError("Access denied or record not found")
 
-    # 🔓 DECRYPT
     decrypted = decrypt_medical_record(
         encrypted_data=record["encrypted_data"],
         iv=record["iv"],
@@ -105,50 +64,30 @@ def view_record(
         private_key_pem=user_private_key
     )
 
-    # 📜 LOG ACCESS
-    log_access(
-        user_id=user_id,
-        patient_id=record["patient_id"],
-        action="VIEW_RECORD"
-    )
-
     return decrypted
 
 
-# ==================================================
-# FETCH RECORDS (SMART ACCESS 🔥)
-# ==================================================
-def get_records_for_patient(patient_id: int, doctor_id: int):
-    """
-    Doctor can see records if:
-    - Assigned doctor
-    - OR has referral access (via record_keys)
-    """
+# ==============================
+# GET RECORDS FOR PATIENT (UI FIX)
+# ==============================
+def get_records_for_patient(patient_id, user_id):
+
+    records = get_patient_records(patient_id)
 
     cur = get_cursor()
 
-    # ✅ Assigned records
-    assigned = is_doctor_assigned(doctor_id, patient_id)
+    accessible_records = []
 
-    if assigned:
-        return get_patient_records(patient_id)
+    for r in records:
+        cur.execute("""
+            SELECT 1
+            FROM record_keys
+            WHERE record_id = %s
+              AND user_id = %s
+              AND (expires_at IS NULL OR expires_at > NOW())
+        """, (r["id"], user_id))
 
-    # 🔁 Referral-based access
-    cur.execute("""
-        SELECT mr.*
-        FROM medical_records mr
-        JOIN record_keys rk ON rk.record_id = mr.id
-        WHERE mr.patient_id = %s AND rk.user_id = %s
-    """, (patient_id, doctor_id))
+        if cur.fetchone():
+            accessible_records.append(r)
 
-    return cur.fetchall()
-
-
-# ==================================================
-# FETCH RECORDS (PATIENT SIDE)
-# ==================================================
-def get_records_for_patient_self(patient_id: int):
-    """
-    Patient sees all their own records
-    """
-    return get_patient_records(patient_id)
+    return accessible_records
